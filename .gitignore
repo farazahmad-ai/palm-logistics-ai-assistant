@@ -1,0 +1,26 @@
+# Local-only project files
+docs/local/
+Data/raw/
+Data/cache/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtual environment
+.venv/
+
+# Secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local data (review for each project)
+
+*.db
+*.sqlite
+*.sqlite3
+```
