@@ -1,0 +1,120 @@
+name: Deploy Palm Logistics
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: palm-logistics-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate application
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: latest-known
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Check Python and deployment script syntax
+        run: |
+          uv run --frozen python -m compileall -q src scripts
+          bash -n scripts/deploy_app.sh
+
+  deploy:
+    name: Deploy through AWS Systems Manager
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: palm-production
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: palm-logistics-${{ github.run_id }}
+
+      - name: Deploy exact commit on EC2
+        env:
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          command_id="$(aws ssm send-command \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "PalmLogistics-Deploy" \
+            --comment "Deploy Palm Logistics ${COMMIT_SHA}" \
+            --parameters "CommitSha=${COMMIT_SHA}" \
+            --timeout-seconds 1200 \
+            --query "Command.CommandId" \
+            --output text)"
+
+          echo "SSM command: ${command_id}"
+          deadline=$((SECONDS + 1200))
+          status="Pending"
+
+          while (( SECONDS < deadline )); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "${command_id}" \
+              --instance-id "${INSTANCE_ID}" \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")"
+
+            case "${status}" in
+              Success|Cancelled|TimedOut|Failed|Cancelling)
+                break
+                ;;
+            esac
+
+            echo "Deployment status: ${status}"
+            sleep 10
+          done
+
+          case "${status}" in
+            Success|Cancelled|TimedOut|Failed|Cancelling)
+              ;;
+            *)
+              aws ssm cancel-command --command-id "${command_id}" >/dev/null
+              echo "Deployment polling timed out after 20 minutes." >&2
+              exit 1
+              ;;
+          esac
+
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${INSTANCE_ID}" \
+            --query "StandardOutputContent" \
+            --output text
+
+          aws ssm get-command-invocation \
+            --command-id "${command_id}" \
+            --instance-id "${INSTANCE_ID}" \
+            --query "StandardErrorContent" \
+            --output text >&2
+
+          if [[ "${status}" != "Success" ]]; then
+            echo "Deployment failed with SSM status: ${status}" >&2
+            exit 1
+          fi

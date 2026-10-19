@@ -1,0 +1,27 @@
+---
+schemaVersion: "2.2"
+description: Deploy one validated Palm Logistics Git commit using the root-owned deployment runner.
+parameters:
+  CommitSha:
+    type: String
+    description: Full 40-character Git commit SHA to deploy.
+    interpolationType: ENV_VAR
+    allowedPattern: "^[0-9a-f]{40}$"
+mainSteps:
+  - action: aws:runShellScript
+    name: deployPalmLogistics
+    precondition:
+      StringEquals:
+        - platformType
+        - Linux
+    inputs:
+      timeoutSeconds: "900"
+      runCommand:
+        - |
+          set -eu
+          # Older SSM Agents may not create the ENV_VAR automatically. The
+          # document pattern still limits the fallback to 40 lowercase hex chars.
+          if [ -z "${SSM_CommitSha+x}" ]; then
+            SSM_CommitSha="{{CommitSha}}"
+          fi
+          exec /usr/local/sbin/deploy-palm-logistics "${SSM_CommitSha}"
