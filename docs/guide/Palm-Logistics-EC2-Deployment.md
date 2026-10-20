@@ -29,7 +29,11 @@ The EC2 server may use an outbound GitHub connection to fetch code. For a privat
 ## 2. Files used by this deployment
 
 - `.github/workflows/deploy.yml`: validates the project and asks Systems Manager to deploy an exact commit.
+- `infrastructure/README.md`: inventory and retention rule for infrastructure source artifacts.
+- `infrastructure/iam/*.json`: EC2, GitHub OIDC, least-privilege deployment, and temporary provisioning role policies.
+- `infrastructure/ssm/palm-logistics-bootstrap-commands.json`: one-time bootstrap payload for rebuilding an application instance.
 - `infrastructure/ssm/palm-logistics-deploy-document.yaml`: custom SSM document that accepts only a validated commit SHA.
+- `infrastructure/systemd/palm-logistics.service`: source systemd unit installed on the application instance.
 - `scripts/deploy_app.sh`: root-owned deployment runner that fetches the commit, synchronizes dependencies, restarts the service, performs health checks, and rolls back after a failed deployment.
 - `scripts/deployment_smoke_test.py`: verifies application imports, SQL, OpenRouter embeddings, and Pinecone after deployment.
 - `uv.lock`: locks the Python dependencies.

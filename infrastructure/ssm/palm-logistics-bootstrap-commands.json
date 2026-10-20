@@ -1,0 +1,29 @@
+{
+  "commands": [
+    "set -eux",
+    "export DEBIAN_FRONTEND=noninteractive",
+    "apt-get update",
+    "apt-get install -y ca-certificates curl git gnupg jq",
+    "ubuntu_version=$( . /etc/os-release && echo ${VERSION_ID} )",
+    "curl -fsSLo /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/${ubuntu_version}/packages-microsoft-prod.deb",
+    "dpkg -i /tmp/packages-microsoft-prod.deb",
+    "rm -f /tmp/packages-microsoft-prod.deb",
+    "apt-get update",
+    "ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev",
+    "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh",
+    "id palmapp >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/palm-logistics --shell /usr/sbin/nologin palmapp",
+    "install -d -o palmapp -g palmapp -m 0750 /opt/palm-logistics",
+    "install -d -o root -g palmapp -m 0750 /etc/palm-logistics",
+    "if [ ! -d /opt/palm-logistics/repository/.git ]; then runuser -u palmapp -- git clone https://github.com/farazahmad-ai/palm-logistics-ai-assistant.git /opt/palm-logistics/repository; fi",
+    "test \"$(runuser -u palmapp -- git -C /opt/palm-logistics/repository remote get-url origin)\" = \"https://github.com/farazahmad-ai/palm-logistics-ai-assistant.git\"",
+    "runuser -u palmapp -- env HOME=/var/lib/palm-logistics /usr/local/bin/uv sync --frozen --project /opt/palm-logistics/repository",
+    "install -o root -g root -m 0755 /opt/palm-logistics/repository/scripts/deploy_app.sh /usr/local/sbin/deploy-palm-logistics",
+    "odbcinst -q -d",
+    "/usr/local/bin/uv --version",
+    "runuser -u palmapp -- git -C /opt/palm-logistics/repository rev-parse HEAD",
+    "stat -c '%U %G %a %n' /usr/local/sbin/deploy-palm-logistics"
+  ],
+  "executionTimeout": [
+    "1800"
+  ]
+}
